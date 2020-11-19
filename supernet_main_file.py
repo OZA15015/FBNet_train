@@ -1,3 +1,4 @@
+from comet_ml import Experiment
 import numpy as np
 import torch
 from torch import nn
@@ -13,7 +14,24 @@ from supernet_functions.model_supernet import FBNet_Stochastic_SuperNet, Superne
 from supernet_functions.training_functions_supernet import TrainerSupernet
 from supernet_functions.config_for_supernet import CONFIG_SUPERNET
 from fbnet_building_blocks.fbnet_modeldef import MODEL_ARCH
-    
+
+#----以下全て, 再現性関連
+import random                                                                                                                                 
+'''
+# cuDNNを使用しない
+seed = 32
+torch.backends.cudnn.deterministic = True  
+random.seed(seed)  
+np.random.seed(seed)  
+torch.manual_seed(seed)  
+# cuda でのRNGを初期化  
+torch.cuda.manual_seed(seed) 
+'''
+
+experiment = Experiment(api_key="8ZVbUGyXPGq2wGdJg0kmFAXPu",
+                    project_name="1116-test", workspace="oza15015")
+
+
 parser = argparse.ArgumentParser("action")
 parser.add_argument('--train_or_sample', type=str, default='', \
                     help='train means training of the SuperNet, sample means sample from SuperNet\'s results')
@@ -22,7 +40,7 @@ parser.add_argument('--architecture_name', type=str, default='', \
 parser.add_argument('--hardsampling_bool_value', type=str, default='True', \
                     help='If not False or 0 -> do hardsampling, else - softmax sampling')
 args = parser.parse_args()
-
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 def train_supernet():
     manual_seed = 1
@@ -48,12 +66,13 @@ def train_supernet():
                                   CONFIG_SUPERNET['dataloading']['path_to_save_data'])
     
     #### Model
-    model = FBNet_Stochastic_SuperNet(lookup_table, cnt_classes=10).cuda()
+    model = FBNet_Stochastic_SuperNet(lookup_table, cnt_classes=10).to(device) #.cuda()
     model = model.apply(weights_init)
-    model = nn.DataParallel(model, device_ids=[0])
+    model = nn.DataParallel(model, device_ids=[3])
+   
     
     #### Loss, Optimizer and Scheduler
-    criterion = SupernetLoss().cuda()
+    criterion = SupernetLoss().to(device) #.cuda()
 
     thetas_params = [param for name, param in model.named_parameters() if 'thetas' in name]
     params_except_thetas = [param for param in model.parameters() if not check_tensor_in_list(param, thetas_params)]
@@ -72,8 +91,21 @@ def train_supernet():
                                                              T_max=CONFIG_SUPERNET['train_settings']['cnt_epochs'],
                                                              last_epoch=last_epoch)
     
+    hyper_params = {
+    'batch_size': CONFIG_SUPERNET['dataloading']['batch_size'],
+    'w_share_in_train': CONFIG_SUPERNET['dataloading']['w_share_in_train'],
+    'path_to_save_data': CONFIG_SUPERNET['dataloading']['path_to_save_data'],
+    'w_lr': CONFIG_SUPERNET['optimizer']['w_lr'],
+    'w_momentum': CONFIG_SUPERNET['optimizer']['w_momentum'],
+    'w_weight_decay': CONFIG_SUPERNET['optimizer']['w_weight_decay'],
+    'thetas_lr': CONFIG_SUPERNET['optimizer']['thetas_lr'],
+    'thetas_weight_decay': CONFIG_SUPERNET['optimizer']['thetas_weight_decay'],
+    'epoch': CONFIG_SUPERNET['train_settings']['cnt_epochs']}
+    
+    experiment.log_parameters(hyper_params)
+
     #### Training Loop
-    trainer = TrainerSupernet(criterion, w_optimizer, theta_optimizer, w_scheduler, logger, writer)
+    trainer = TrainerSupernet(criterion, w_optimizer, theta_optimizer, w_scheduler, logger, writer, experiment)
     trainer.train_loop(train_w_loader, train_thetas_loader, test_loader, model)
 
 # Arguments:
@@ -84,7 +116,7 @@ def train_supernet():
 def sample_architecture_from_the_supernet(unique_name_of_arch, hardsampling=True):
     logger = get_logger(CONFIG_SUPERNET['logging']['path_to_log_file']) 
     lookup_table = LookUpTable()
-    model = FBNet_Stochastic_SuperNet(lookup_table, cnt_classes=10).cuda()
+    model = FBNet_Stochastic_SuperNet(lookup_table, cnt_classes=10).to(device) #.cuda()
     model = nn.DataParallel(model)
 
     load(model, CONFIG_SUPERNET['train_settings']['path_to_save_model'])
