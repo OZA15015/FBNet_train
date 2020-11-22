@@ -77,10 +77,10 @@ class FBNet_Stochastic_SuperNet(nn.Module):
         '''
 
         self.last_stages = nn.Sequential(OrderedDict([
-            ("conv_k1", nn.Conv2d(lookup_table.layers_parameters[-1][1], 1504, kernel_size = 2)),
+            ("conv_k1", nn.Conv2d(lookup_table.layers_parameters[-1][1], 320, kernel_size = 1)),
             ("dropout", nn.Dropout(0.2)),
             ("flatten", Flatten()),
-            ("fc", nn.Linear(in_features=1504, out_features=cnt_classes)),
+            ("fc", nn.Linear(in_features=1280, out_features=cnt_classes)),
         ]))
 
     
@@ -112,13 +112,15 @@ class SupernetLoss(nn.Module):
         prec1 = prec1.to('cpu').detach().numpy().copy()
         
          
-        rate = prec1 / 0.85 #補正で + 0.5(5%)
-        if prec1 >= 0.85:
+        ''' 
+        rate = prec1 / 0.80 #補正で + 0.5(5%)
+        if prec1 >= 0.80:
             ce = torch.sub(ce, ce)
         else:
             ce = torch.sub(ce, cal_loss * rate)
-        #ce = torch.add(ce, 1.0) #改良
-        
+        ce = torch.add(ce, 1.0) #改良
+        '''
+
         #delta = 1e-5
         #prec1 = torch.add(prec1, delta)
         #lat = latency ** self.beta

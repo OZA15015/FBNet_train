@@ -5,7 +5,7 @@ import copy
 import logging
 import math
 from collections import OrderedDict
-
+import numpy as np
 import torch
 import torch.nn as nn
 from .layers import (
@@ -18,6 +18,17 @@ from .layers import (
 from .fbnet_modeldef import MODEL_ARCH
 
 logger = logging.getLogger(__name__)
+
+#----以下全て, 再現性関連
+import random
+# cuDNNを使用しない
+seed = 32
+torch.backends.cudnn.deterministic = True
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+# cuda でのRNGを初期化
+torch.cuda.manual_seed(seed)
 
 def _py2_round(x):
     return math.floor(x + 0.5) if x >= 0.0 else math.ceil(x - 0.5)
@@ -718,10 +729,11 @@ class FBNetBuilder(object):
         channel = stage_info[0]
         stride = stage_info[1]
         out_depth = self._get_divisible_width(int(channel * self.width_ratio))
+        
         kernel = 3
         if len(stage_info) > 2:
-            kernel = stage_info[2]
-
+            kernel = stage_info[2]    
+        
         out = ConvBNRelu(
             dim_in,
             out_depth,
@@ -732,6 +744,7 @@ class FBNetBuilder(object):
             use_relu="relu",
             bn_type=self.bn_type,
         )
+         
         self.last_depth = out_depth
         return out
 
@@ -741,6 +754,7 @@ class FBNetBuilder(object):
         assert isinstance(blocks, list) and all(
             isinstance(x, dict) for x in blocks
         ), blocks
+        
 
         modules = OrderedDict()
         for block in blocks:
@@ -812,13 +826,12 @@ class FBNetBuilder(object):
         '''
 
         op = nn.Sequential(OrderedDict([
-            ("conv_k1", nn.Conv2d(self.last_depth, 1504, kernel_size = 2)),
+            ("conv_k1", nn.Conv2d(self.last_depth, 320, kernel_size = 1)),
             ("dropout", nn.Dropout(dropout_ratio)),
             ("flatten", Flatten()),
-            ("fc", nn.Linear(in_features=1504, out_features=cnt_classes)),
+            ("fc", nn.Linear(in_features=1280, out_features=cnt_classes)),
         ]))
-
-
+       
         self.last_depth = cnt_classes
         return op
 
@@ -830,7 +843,7 @@ def _get_trunk_cfg(arch_def):
 
 class FBNet(nn.Module):
     def __init__(
-        self, builder, arch_def, dim_in, cnt_classes=1000
+        self, builder, arch_def, dim_in, cnt_classes=10 #1000
     ):
         super(FBNet, self).__init__()
         self.first = builder.add_first(arch_def["first"], dim_in=dim_in)

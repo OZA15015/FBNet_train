@@ -22,7 +22,7 @@ torch.cuda.manual_seed(seed)
 
 i = 0
 n = 0
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 class TrainerSupernet:
     def __init__(self, criterion, w_optimizer, theta_optimizer, w_scheduler, logger, writer, experiment):
@@ -51,7 +51,7 @@ class TrainerSupernet:
     def train_loop(self, train_w_loader, train_thetas_loader, test_loader, model):
         
         best_top1 = 0.0
-        
+        best_lat = 1000000
         # firstly, train weights only
         for epoch in range(self.train_thetas_from_the_epoch):
             self.writer.add_scalar('learning_rate/weights', self.w_optimizer.param_groups[0]['lr'], epoch)
@@ -71,9 +71,13 @@ class TrainerSupernet:
             self.logger.info("Start to train theta for epoch %d" % (epoch))
             self._training_step(model, train_thetas_loader, self.theta_optimizer, epoch, info_for_logger="_theta_step_")
             
-            top1_avg = self._validate(model, test_loader, epoch)
+            top1_avg, lat_avg = self._validate(model, test_loader, epoch)
+            #if best_top1 < top1_avg and lat_avg < best_lat:
+            #if best_top1 < top1_avg: #original
+            #if top1_avg >= 0.65  and lat_avg < best_lat:    
             if best_top1 < top1_avg:
                 best_top1 = top1_avg
+                best_lat = lat_avg
                 self.logger.info("Best top1 acc by now. Save model")
                 save(model, self.path_to_save_model)
             
@@ -86,7 +90,7 @@ class TrainerSupernet:
         #n = 0
         #time_sum = 0
         for step, (X, y) in enumerate(loader):
-            #X, y = X.cuda(non_blocking=True), y.cuda(non_blocking=True)
+            i#X, y = X.cuda(non_blocking=True), y.cuda(non_blocking=True)
             # X.to(device, non_blocking=True), y.to(device, non_blocking=True)
             X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
             N = X.shape[0]
@@ -151,7 +155,7 @@ class TrainerSupernet:
         self._epoch_stats_logging(start_time=start_time, epoch=epoch, val_or_train='val')
         for avg in [self.top1, self.top3, self.losses]:
             avg.reset()
-        return top1_avg
+        return top1_avg, self.losses_lat.get_avg() #lat追加
     
     def _epoch_stats_logging(self, start_time, epoch, val_or_train, info_for_logger=''):
         self.writer.add_scalar('train_vs_val/'+val_or_train+'_loss'+info_for_logger, self.losses.get_avg(), epoch)

@@ -5,6 +5,18 @@ import gc
 from fbnet_building_blocks.fbnet_builder import PRIMITIVES
 from general_functions.utils import add_text_to_file, clear_files_in_the_list
 from supernet_functions.config_for_supernet import CONFIG_SUPERNET
+import numpy as np
+
+#----以下全て, 再現性関連
+import random
+# cuDNNを使用しない
+seed = 32
+torch.backends.cudnn.deterministic = True
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+# cuda でのRNGを初期化
+torch.cuda.manual_seed(seed)
 
 # the settings from the page 4 of https://arxiv.org/pdf/1812.03443.pdf
 #### table 2
@@ -18,17 +30,20 @@ SEARCH_SPACE = OrderedDict([
                      (16, 112, 112), (24, 56, 56),  (24, 56, 56),  (24, 56, 56),
                      (24, 56, 56),   (32, 28, 28),  (32, 28, 28),  (32, 28, 28),
                      (32, 28, 28),   (64, 14, 14),  (64, 14, 14),  (64, 14, 14),
-                     (64, 14, 14),   (112, 14, 14), (112, 14, 14), (112, 14, 14),
-                     (112, 14, 14),  (184, 7, 7),   (184, 7, 7),   (184, 7, 7),
-                     (184, 7, 7)]),
+                     (64, 14, 14),   (96, 14, 14), (96, 14, 14), (96, 14, 14),
+                     (96, 14, 14),  (160, 7, 7),   (160, 7, 7),   (160, 7, 7),
+                     (160, 7, 7)]),
+    
     # table 1. filter numbers over the 22 layers
     ("channel_size", [16,
                       24,  24,  24,  24,
                       32,  32,  32,  32,
                       64,  64,  64,  64,
-                      112, 112, 112, 112,
-                      184, 184, 184, 184,
-                      352]),
+                      96, 96, 96, 96,
+                      160, 160, 160, 160,
+                      320]),
+  
+ 
     # table 1. strides over the 22 layers
     ("strides", [1,
                  2, 1, 1, 1,
@@ -37,13 +52,14 @@ SEARCH_SPACE = OrderedDict([
                  1, 1, 1, 1,
                  2, 1, 1, 1,
                  1])
-])
+    ])
 
 # **** to recalculate latency use command:
 # l_table = LookUpTable(calulate_latency=True, path_to_file='lookup_table.txt', cnt_of_runs=50)
 # results will be written to './supernet_functions/lookup_table.txt''
 # **** to read latency from the another file use command:
 # l_table = LookUpTable(calulate_latency=False, path_to_file='lookup_table.txt')
+
 class LookUpTable:
     def __init__(self, candidate_blocks=CANDIDATE_BLOCKS, search_space=SEARCH_SPACE,
                  calulate_latency=False):

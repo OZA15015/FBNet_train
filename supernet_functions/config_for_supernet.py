@@ -2,11 +2,11 @@ import numpy as np
 
 CONFIG_SUPERNET = {
     'gpu_settings' : {
-        'gpu_ids' : [3]
+        'gpu_ids' : [2]
     },
     'lookup_table' : {
         'create_from_scratch' : False,
-        'path_to_lookup_table' : './supernet_functions/lookup_table2.txt',
+        'path_to_lookup_table' : './supernet_functions/lookup_table.txt',
         'number_of_runs' : 50 # each operation run number_of_runs times and then we will take average
     },
     'logging' : {
@@ -28,14 +28,14 @@ CONFIG_SUPERNET = {
         'thetas_weight_decay' : 5 * 1e-4
     },
     'loss' : {
-        'alpha' : 3.0,
-        'beta' : 1.0
+        'alpha' : 0.2, #0.2
+        'beta' : 0.6
     },
     'train_settings' : {
         'cnt_epochs' : 180, # 90
         'train_thetas_from_the_epoch' : 10,
         'print_freq' : 50,
-        'path_to_save_model' : './supernet_functions/logs/1116-test/1116test13/best_model.pth',
+        'path_to_save_model' : './supernet_functions/logs/1120-test/1120test2/best_model.pth',
         # for Gumbel Softmax
         'init_temperature' : 5.0,
         'exp_anneal_rate' : np.exp(-0.045)

@@ -29,7 +29,7 @@ torch.cuda.manual_seed(seed)
 '''
 
 experiment = Experiment(api_key="8ZVbUGyXPGq2wGdJg0kmFAXPu",
-                    project_name="1116-test", workspace="oza15015")
+                    project_name="1120test-bacchus", workspace="oza15015")
 
 
 parser = argparse.ArgumentParser("action")
@@ -40,7 +40,7 @@ parser.add_argument('--architecture_name', type=str, default='', \
 parser.add_argument('--hardsampling_bool_value', type=str, default='True', \
                     help='If not False or 0 -> do hardsampling, else - softmax sampling')
 args = parser.parse_args()
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 def train_supernet():
     manual_seed = 1
@@ -68,7 +68,7 @@ def train_supernet():
     #### Model
     model = FBNet_Stochastic_SuperNet(lookup_table, cnt_classes=10).to(device) #.cuda()
     model = model.apply(weights_init)
-    model = nn.DataParallel(model, device_ids=[3])
+    model = nn.DataParallel(model, device_ids=[2])
    
     
     #### Loss, Optimizer and Scheduler
@@ -127,6 +127,8 @@ def sample_architecture_from_the_supernet(unique_name_of_arch, hardsampling=True
     arch_operations=[]
     if hardsampling:
         for layer in model.module.stages_to_search:
+            #print(layer)
+            #quit()
             arch_operations.append(ops_names[np.argmax(layer.thetas.detach().cpu().numpy())])
     else:
         rng = np.linspace(0, cnt_ops - 1, cnt_ops, dtype=int)
