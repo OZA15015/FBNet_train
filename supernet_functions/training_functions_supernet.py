@@ -22,7 +22,7 @@ torch.cuda.manual_seed(seed)
 
 i = 0
 n = 0
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 class TrainerSupernet:
     def __init__(self, criterion, w_optimizer, theta_optimizer, w_scheduler, logger, writer, experiment):
@@ -51,7 +51,8 @@ class TrainerSupernet:
     def train_loop(self, train_w_loader, train_thetas_loader, test_loader, model):
         
         best_top1 = 0.0
-        best_lat = 1000000
+        best_lat = 10000000
+        n = 1
         # firstly, train weights only
         for epoch in range(self.train_thetas_from_the_epoch):
             self.writer.add_scalar('learning_rate/weights', self.w_optimizer.param_groups[0]['lr'], epoch)
@@ -74,13 +75,29 @@ class TrainerSupernet:
             top1_avg, lat_avg = self._validate(model, test_loader, epoch)
             #if best_top1 < top1_avg and lat_avg < best_lat:
             #if best_top1 < top1_avg: #original
-            #if top1_avg >= 0.65  and lat_avg < best_lat:    
-            if best_top1 < top1_avg:
+            '''
+            if (top1_avg >= 0.80  and lat_avg < best_lat) or best_top1 < top1_avg:
+                if best_top1 < top1_avg:
+                    best_top1 = top1_avg
+                    print("Best Acc!!")
+                if lat_avg < best_lat:
+                    best_lat = lat_avg
+                    print("Best Speed!!")
+                
+                self.logger.info("Best top1 acc by now. Save model")
+                #print("Over Acc: 0.60")
+                print("Model Number = " + str(n))
+                save(model, self.path_to_save_model + str(n) + '.pth')
+                n += 1
+            '''
+            if top1_avg >= 0.35  and lat_avg < best_lat:
                 best_top1 = top1_avg
                 best_lat = lat_avg
                 self.logger.info("Best top1 acc by now. Save model")
-                save(model, self.path_to_save_model)
-            
+                print("Over Acc: 0.35")
+                print("Model Number = " + str(n))
+                save(model, self.path_to_save_model + str(n) + '.pth')
+                n+=1
             self.temperature = self.temperature * self.exp_anneal_rate
         
     def _training_step(self, model, loader, optimizer, epoch, info_for_logger=""):
