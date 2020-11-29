@@ -26,6 +26,7 @@ CANDIDATE_BLOCKS = ["ir_k3_e1", "ir_k3_s2", "ir_k3_e3",
 SEARCH_SPACE = OrderedDict([
     #### table 1. input shapes of 22 searched layers (considering with strides)
     # Note: the second and third dimentions are recommended (will not be used in training) and written just for debagging
+    # サイズをCIFAR-10んい変更する必要ありそう, ただし, このままでも良いと思う, サイズのスケールが変わるだけなので
     ("input_shape", [(16, 112, 112),
                      (16, 112, 112), (24, 56, 56),  (24, 56, 56),  (24, 56, 56),
                      (24, 56, 56),   (32, 28, 28),  (32, 28, 28),  (32, 28, 28),
@@ -104,18 +105,22 @@ class LookUpTable:
             self._write_lookup_table_to_file(write_to_file)
     
     def _calculate_latency(self, operations, layers_parameters, layers_input_shapes, cnt_of_runs):
+        # configの 'create_from_scratch' : Trueにする, そうすると算出して使用できる, 指定ファイルに書き込み
         LATENCY_BATCH_SIZE = 1
         latency_table_layer_by_ops = [{} for i in range(self.cnt_layers)]
-        
+        # layerごと, かつオペレーションごとにlatency算出
         for layer_id in range(self.cnt_layers):
             for op_name in operations:
                 op = operations[op_name](*layers_parameters[layer_id])
-                input_sample = torch.randn((LATENCY_BATCH_SIZE, *layers_input_shapes[layer_id]))
+                input_sample = torch.randn((LATENCY_BATCH_SIZE, *layers_input_shapes[layer_id])) #サイズは一定(上記のImageNet)
+                # ランダムでい入力ベクトルを生成
                 globals()['op'], globals()['input_sample'] = op, input_sample
                 total_time = timeit.timeit('output = op(input_sample)', setup="gc.enable()", \
                                            globals=globals(), number=cnt_of_runs)
+                #50回分のlatencyを算出
                 # measured in micro-second
                 latency_table_layer_by_ops[layer_id][op_name] = total_time / cnt_of_runs / LATENCY_BATCH_SIZE * 1e6
+                #50回分のの平均を算出, 時間をミクロ秒であると仮定し, ミクロ秒に変換(1e6で割る)
                 
         return latency_table_layer_by_ops
     
