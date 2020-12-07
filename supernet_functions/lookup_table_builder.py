@@ -27,14 +27,15 @@ SEARCH_SPACE = OrderedDict([
     #### table 1. input shapes of 22 searched layers (considering with strides)
     # Note: the second and third dimentions are recommended (will not be used in training) and written just for debagging
     # サイズをCIFAR-10んい変更する必要ありそう, ただし, このままでも良いと思う, サイズのスケールが変わるだけなので
-    ("input_shape", [(16, 112, 112),
-                     (16, 112, 112), (24, 56, 56),  (24, 56, 56),  (24, 56, 56),
-                     (24, 56, 56),   (32, 28, 28),  (32, 28, 28),  (32, 28, 28),
-                     (32, 28, 28),   (64, 14, 14),  (64, 14, 14),  (64, 14, 14),
-                     (64, 14, 14),   (96, 14, 14), (96, 14, 14), (96, 14, 14),
-                     (96, 14, 14),  (160, 7, 7),   (160, 7, 7),   (160, 7, 7),
-                     (160, 7, 7)]),
-    
+
+  ("input_shape", [(16, 32, 32),
+                     (16, 32, 32), (24, 16, 16),  (24, 16, 16),  (24, 16, 16),
+                     (24, 16, 16),   (32, 8, 8),  (32, 8, 8),  (32, 8, 8),
+                     (32, 8, 8),   (64, 4, 4),  (64, 4, 4),  (64, 4, 4),
+                     (64, 14, 14),   (96, 14, 14), (96, 14, 14), (96, 4, 4),
+                     (96, 4, 4),  (160, 2, 2),   (160, 2, 2),   (160, 2, 2),
+                     (160, 2, 2)]),
+  
     # table 1. filter numbers over the 22 layers
     ("channel_size", [16,
                       24,  24,  24,  24,
@@ -73,11 +74,14 @@ class LookUpTable:
         
         # lookup_table
         self.lookup_table_latency = None
+        self.lookup_table_energy = None #add
         if calulate_latency:
             self._create_from_operations(cnt_of_runs=CONFIG_SUPERNET['lookup_table']['number_of_runs'],
                                          write_to_file=CONFIG_SUPERNET['lookup_table']['path_to_lookup_table'])
+            self._create_from_file(path_to_file=CONFIG_SUPERNET['lookup_table']['path_to_energy'], flag = 'energy') #書き込まないので
         else:
-            self._create_from_file(path_to_file=CONFIG_SUPERNET['lookup_table']['path_to_lookup_table'])
+            self._create_from_file(path_to_file=CONFIG_SUPERNET['lookup_table']['path_to_lookup_table'], flag ='latency')
+            self._create_from_file(path_to_file=CONFIG_SUPERNET['lookup_table']['path_to_energy'], flag = 'energy')
     
     def _generate_layers_parameters(self, search_space):
         # layers_parameters are : C_in, C_out, expansion, stride
@@ -140,9 +144,11 @@ class LookUpTable:
         text = ''.join(text)
         add_text_to_file(text, path_to_file)
     
-    def _create_from_file(self, path_to_file):
-        self.lookup_table_latency = self._read_lookup_table_from_file(path_to_file)
-    
+    def _create_from_file(self, path_to_file, flag):
+        if flag == 'latency':
+            self.lookup_table_latency = self._read_lookup_table_from_file(path_to_file)
+        elif flag == 'energy':
+             self.lookup_table_energy = self._read_lookup_table_from_file(path_to_file)
     def _read_lookup_table_from_file(self, path_to_file):
         latences = [line.strip('\n') for line in open(path_to_file)]
         ops_names = latences[0].split(" ")

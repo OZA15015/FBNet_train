@@ -27,29 +27,32 @@ class MixedOperation(nn.Module):
     # Arguments:
     # proposed_operations is a dictionary {operation_name : op_constructor}
     # latency is a dictionary {operation_name : latency}
-    def __init__(self, layer_parameters, proposed_operations, latency):
+    def __init__(self, layer_parameters, proposed_operations, latency, energy): #energy add
         super(MixedOperation, self).__init__()
         ops_names = [op_name for op_name in proposed_operations]
         
         self.ops = nn.ModuleList([proposed_operations[op_name](*layer_parameters)
                                   for op_name in ops_names])
         self.latency = [latency[op_name] for op_name in ops_names]
+        self.energy = [energy[op_name] for op_name in ops_names] #energt add
         self.thetas = nn.Parameter(torch.Tensor([1.0 / len(ops_names) for i in range(len(ops_names))]))
     
-    def forward(self, x, temperature, latency_to_accumulate):
+    def forward(self, x, temperature, latency_to_accumulate, energy_to_accumulate): #energy add
         soft_mask_variables = nn.functional.gumbel_softmax(self.thetas, temperature)
         output  = sum(m * op(x) for m, op in zip(soft_mask_variables, self.ops))
 
         latency = sum(m * lat for m, lat in zip(soft_mask_variables, self.latency))
+        energy = sum(m * lat for m, lat in zip(soft_mask_variables, self.energy)) #energy add
         #for m, lat in zip(soft_mask_variables, self.latency):
         #    print(lat)
         #print("=====================")
         #quit()
         latency_to_accumulate = latency_to_accumulate + latency
-        return output, latency_to_accumulate
+        energy_to_accumulate = energy_to_accumulate + energy # energy add
+        return output, latency_to_accumulate, energy_to_accumulate #energy add
 
 class FBNet_Stochastic_SuperNet(nn.Module):
-    def __init__(self, lookup_table, cnt_classes=10):  #1000):
+    def __init__(self, lookup_table, cnt_classes=10):
         super(FBNet_Stochastic_SuperNet, self).__init__()
         # self.first identical to 'add_first' in the fbnet_building_blocks/fbnet_builder.py
 
@@ -64,7 +67,8 @@ class FBNet_Stochastic_SuperNet(nn.Module):
         self.stages_to_search = nn.ModuleList([MixedOperation(
                                                    lookup_table.layers_parameters[layer_id],
                                                    lookup_table.lookup_table_operations,
-                                                   lookup_table.lookup_table_latency[layer_id])
+                                                   lookup_table.lookup_table_latency[layer_id],
+                                                   lookup_table.lookup_table_energy[layer_id]) #energy add
                                                for layer_id in range(lookup_table.cnt_layers)])
 
         '''
@@ -84,52 +88,46 @@ class FBNet_Stochastic_SuperNet(nn.Module):
         ]))
 
     
-    def forward(self, x, temperature, latency_to_accumulate):        
+    def forward(self, x, temperature, latency_to_accumulate, energy_to_accumulate): #energy_to_accumulate add        
         #time_sum = 0
         #start_time = time.time()
         y = self.first(x) #ここで推論時間計算, ここに追加すべき, temperatureって何か確認
         for mixed_op in self.stages_to_search:
-            #print(mixed_op)
-            y, latency_to_accumulate = mixed_op(y, temperature, latency_to_accumulate)
-            #time_sum += time.time() - start_time
-        #quit()
+            y, latency_to_accumulate, energy_to_accumulate = mixed_op(y, temperature, latency_to_accumulate, energy_to_accumulate) #energy_to_accumulate add
         y = self.last_stages(y)
-        #time_sum += time.time() - start_time
-        #print("time: " + str(time_sum))
-        return y, latency_to_accumulate
+        return y, latency_to_accumulate, energy_to_accumulate #energy_to_accumulate add
     
 class SupernetLoss(nn.Module):
     def __init__(self):
         super(SupernetLoss, self).__init__()
         self.alpha = CONFIG_SUPERNET['loss']['alpha']
         self.beta = CONFIG_SUPERNET['loss']['beta']
+        self.gamma = CONFIG_SUPERNET['loss']['gamma']
         self.weight_criterion = nn.CrossEntropyLoss()
     
-    def forward(self, outs, targets, latency, losses_ce, losses_lat, N):
+    def forward(self, outs, targets, latency, energy, losses_ce, losses_lat, losses_energy, N): #energy add
         ce = self.weight_criterion(outs, targets)
         cal_loss = ce.to('cpu').detach().numpy().copy()
         prec1, _ = accuracy(outs, targets, topk=(1, 3)) #追加
         prec1 = prec1.to('cpu').detach().numpy().copy()
         
-         
-        ''' 
-        rate = prec1 / 0.80 #補正で + 0.5(5%)
-        if prec1 >= 0.80:
+        
+        rate = prec1 / 0.35
+        if prec1 >= 0.35:
             ce = torch.sub(ce, ce)
         else:
             ce = torch.sub(ce, cal_loss * rate)
+        
         ce = torch.add(ce, 1.0) #改良
-        '''
+        
 
-        #delta = 1e-5
-        #prec1 = torch.add(prec1, delta)
-        #lat = latency ** self.beta
         lat = torch.log(latency ** self.beta) #original
-        #lat = torch.div(lat, prec1)
+        energy = self.gamma * energy
         losses_ce.update(ce.item(), N)
         losses_lat.update(lat.item(), N)
+        losses_energy.update(energy.item(), N)
         #loss = ce
-        loss = self.alpha * ce * lat
+        loss = self.alpha * ce * lat * energy
         #loss = ce + self.alpha * lat
         return loss #.unsqueeze(0)
 
