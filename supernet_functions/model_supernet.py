@@ -103,6 +103,7 @@ class SupernetLoss(nn.Module):
         self.alpha = CONFIG_SUPERNET['loss']['alpha']
         self.beta = CONFIG_SUPERNET['loss']['beta']
         self.gamma = CONFIG_SUPERNET['loss']['gamma']
+        self.delta = CONFIG_SUPERNET['loss']['delta']
         self.weight_criterion = nn.CrossEntropyLoss()
     
     def forward(self, outs, targets, latency, energy, losses_ce, losses_lat, losses_energy, N): #energy add
@@ -111,23 +112,51 @@ class SupernetLoss(nn.Module):
         prec1, _ = accuracy(outs, targets, topk=(1, 3)) #追加
         prec1 = prec1.to('cpu').detach().numpy().copy()
         
-        
+        '''   
         rate = prec1 / 0.35
         if prec1 >= 0.35:
             ce = torch.sub(ce, ce)
         else:
             ce = torch.sub(ce, cal_loss * rate)
+        '''
+        #ce = torch.add(ce, 1.0)
         
-        ce = torch.add(ce, 1.0) #改良
+
+        if torch.isnan(ce) or ce < 0.0: #改良
+            torch.tensor(0.0, requires_grad=True)
+        
+        cal_lat = torch.log(latency ** self.beta) #出力用, 改良
+        #energy_cal = torch.log(energy ** self.beta) #出力用, 改良
+        energy_cal = torch.log(energy ** self.delta)
+
+        energy_cal = energy_cal.to('cpu').detach().numpy().copy() #計算用
+        cal_lat = cal_lat.to('cpu').detach().numpy().copy() #計算用
+        
+        if energy_cal < 0 or np.isnan(energy_cal): #改良
+            energy_cal = np.zeros(1)
+        if cal_lat < 0 or np.isnan(cal_lat): #改良
+            cal_lat = np.zeros(1)
         
 
         lat = torch.log(latency ** self.beta) #original
-        energy = self.gamma * energy
-        losses_ce.update(ce.item(), N)
-        losses_lat.update(lat.item(), N)
-        losses_energy.update(energy.item(), N)
-        #loss = ce
-        loss = self.alpha * ce * lat * energy
-        #loss = ce + self.alpha * lat
-        return loss #.unsqueeze(0)
+        #energy = torch.log(energy ** self.beta)
+        energy = torch.log(energy ** self.delta)
 
+        losses_ce.update(ce.item(), N)
+        losses_lat.update(cal_lat.item(), N)
+        losses_energy.update(energy_cal.item(), N) 
+        
+        if energy < 0 or torch.isnan(energy):
+            energy = torch.tensor(0.0)
+        if lat < 0 or torch.isnan(lat):
+            lat = torch.tensor(0.0)
+        
+        #loss = self.alpha * ce * (lat + energy)
+        loss = ce + (self.alpha * lat) + (self.gamma * energy)
+        #loss = ce * (lat + energy)
+        #loss = self.alpha * (ce + lat + energy)
+        #loss = ce + lat + energy
+        if loss < 0 or torch.isnan(loss):
+            loss = torch.tensor(0.0, requires_grad=True)
+        
+        return loss
